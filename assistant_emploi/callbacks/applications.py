@@ -13,6 +13,7 @@ from ..exporter import export_applications_ods
 from ..scraper import download_annonce, is_http_url
 from ..ui.home import (
     build_cv_section,
+    build_dashboard_body,
     build_stats_section,
     recent_applications,
     render_application_cards,
@@ -61,6 +62,15 @@ def _download_for(app_id: int, url: str | None) -> None:
 )
 def _render_cv(_refresh):
     return build_cv_section()
+
+
+@callback(
+    Output("dashboard-body", "children"),
+    Input("refresh-apps", "data"),
+    prevent_initial_call=True,
+)
+def _render_dashboard_body(_refresh):
+    return build_dashboard_body()
 
 
 @callback(
@@ -136,16 +146,6 @@ def _render_stats(_refresh):
     return build_stats_section()
 
 
-@callback(
-    Output("stats-collapse", "is_open"),
-    Input("btn-toggle-stats", "n_clicks"),
-    State("stats-collapse", "is_open"),
-    prevent_initial_call=True,
-)
-def _toggle_stats(_n, is_open):
-    return not is_open
-
-
 # ---------------------------------------------------------------------------
 # Modale candidature : ouverture (création + édition)
 # ---------------------------------------------------------------------------
@@ -162,17 +162,18 @@ def _toggle_stats(_n, is_open):
     Output("edit-app-id", "data"),
     Output("app-modal-feedback", "children"),
     Input("btn-new-app", "n_clicks"),
+    Input("btn-new-app-dash", "n_clicks"),
     Input({"type": "edit-app", "index": ALL}, "n_clicks"),
     prevent_initial_call=True,
 )
-def _open_app_modal(_new_clicks, _edit_clicks):
+def _open_app_modal(_new_clicks, _new_clicks_dash, _edit_clicks):
     if not _clicked():
         raise PreventUpdate
 
     options = _cv_options()
     trigger = ctx.triggered_id
 
-    if trigger == "btn-new-app":
+    if isinstance(trigger, str) and trigger.startswith("btn-new-app"):
         current = repo.get_current_cv()
         return (
             True,

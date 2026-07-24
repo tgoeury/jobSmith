@@ -1,26 +1,30 @@
 """Palette et helpers visuels — thème sombre anthracite / ambre."""
 from __future__ import annotations
 
-# Palette principale
-BG = "#1c1b19"          # fond général
-BG_ELEV = "#26241f"     # surfaces surélevées (cartes)
-BG_ELEV_2 = "#302d27"   # surfaces secondaires
-BORDER = "#3a362f"
-TEXT = "#eae6df"
-TEXT_MUTED = "#a49e92"
-ACCENT = "#d9843a"      # ambre
-ACCENT_HOVER = "#e6975a"
+# Palette principale (thème sombre anthracite / ambre)
+BG = "#1a1815"          # fond général
+BG_SIDEBAR = "#1e1c18"  # fond de la barre latérale
+BG_ELEV = "#232019"     # surfaces surélevées (cartes)
+BG_ELEV_2 = "#2b2721"   # surfaces secondaires (bulles, hover)
+BORDER = "#322d25"
+BORDER_SOFT = "#3a352c" # bordures pointillées / champs
+TEXT = "#f1ece3"
+TEXT_MUTED = "#a89f8f"
+TEXT_DIM = "#756c5f"    # texte très discret
+ACCENT = "#dd9a4e"      # ambre
+ACCENT_HOVER = "#e8ac66"
 GREEN = "#6fae6f"
-RED = "#cf6b5c"
-BLUE = "#5c8fcf"
-YELLOW = "#d9b84a"
+RED = "#d16c5c"
+BLUE = "#5f93d1"
+YELLOW = "#dcbb4f"
+PURPLE = "#c48ad9"
 
 # Couleurs associées aux statuts connus (repli sur ACCENT).
 STATUS_COLORS = {
     "Candidature envoyée": BLUE,
     "Refus": RED,
     "1er entretien": YELLOW,
-    "2ème entretien (technique)": "#c58bd9",
+    "2ème entretien (technique)": PURPLE,
     "Entretien": YELLOW,
     "Offre": GREEN,
     "Accepté": GREEN,
@@ -37,7 +41,7 @@ POSITIVE_STATUSES = {
 }
 
 # Séquence de couleurs pour les graphes catégoriels.
-CATEGORICAL = [ACCENT, BLUE, GREEN, YELLOW, RED, "#c58bd9", "#7ec8c0", TEXT_MUTED]
+CATEGORICAL = [ACCENT, BLUE, GREEN, YELLOW, RED, PURPLE, "#7ec8c0", TEXT_MUTED]
 
 # Mise en forme commune des figures Plotly.
 PLOTLY_LAYOUT = dict(

@@ -293,39 +293,61 @@ def build_cv_section() -> dbc.Card:
 # Section statistiques
 # ---------------------------------------------------------------------------
 
-def build_stats_section():
+def _tile(value, label, tone: str = "") -> html.Div:
+    value_class = "stat-value" + (f" {tone}" if tone else "")
+    return html.Div(
+        className="stat-tile",
+        children=[
+            html.Div(str(value), className=value_class),
+            html.Div(label, className="stat-label"),
+        ],
+    )
+
+
+def build_stat_tiles() -> html.Div:
+    """Rangée des 4 indicateurs clés (partagée par le tableau de bord et les stats)."""
     from .. import stats as stats_mod
 
     nums = stats_mod.summary_numbers()
-    tiles = html.Div(
+    return html.Div(
         className="stat-tiles",
         children=[
             _tile(nums["total"], "Candidatures"),
             _tile(nums["last_30"], "30 derniers jours"),
-            _tile(nums["positives"], "Réponses positives"),
-            _tile(nums["refus"], "Refus"),
+            _tile(nums["positives"], "Réponses positives", tone="green"),
+            _tile(nums["refus"], "Refus", tone="red"),
         ],
     )
-    graphs = dbc.Row(
-        [
-            dbc.Col(dcc.Graph(figure=stats_mod.figure_global_status(),
-                              config={"displayModeBar": False}), md=6),
-            dbc.Col(dcc.Graph(figure=stats_mod.figure_last_30_days(),
-                              config={"displayModeBar": False}), md=6),
-            dbc.Col(dcc.Graph(figure=stats_mod.figure_by_cv(),
-                              config={"displayModeBar": False}), md=12),
-        ]
-    )
-    return html.Div([tiles, graphs])
 
 
-def _tile(value, label) -> html.Div:
+def _chart_card(title: str, figure) -> html.Div:
     return html.Div(
-        className="stat-tile",
+        className="chart-card",
         children=[
-            html.Div(str(value), className="stat-value"),
-            html.Div(label, className="stat-label"),
+            html.Div(title, className="chart-title"),
+            dcc.Graph(figure=figure, config={"displayModeBar": False}),
         ],
+    )
+
+
+def build_stats_section():
+    """Contenu de la page Statistiques : tuiles + graphiques Plotly."""
+    from .. import stats as stats_mod
+
+    return html.Div(
+        [
+            build_stat_tiles(),
+            dbc.Row(
+                [
+                    dbc.Col(_chart_card("Répartition par statut",
+                                        stats_mod.figure_global_status()), md=6),
+                    dbc.Col(_chart_card("30 derniers jours",
+                                        stats_mod.figure_last_30_days()), md=6),
+                ],
+                class_name="g-3",
+            ),
+            _chart_card("Candidatures par CV", stats_mod.figure_by_cv()),
+        ]
     )
 
 
@@ -335,8 +357,56 @@ def _tile(value, label) -> html.Div:
 
 def render_application_cards(apps: list[dict]) -> html.Div:
     if not apps:
-        return html.Div("Aucune candidature ne correspond.", className="muted")
-    return html.Div([build_application_card(app) for app in apps])
+        return html.Div(
+            "Aucune candidature ne correspond.", className="empty-state"
+        )
+    return html.Div(
+        [build_application_card(app) for app in apps], className="apps-stack"
+    )
+
+
+def _recent_row(app: dict) -> html.Div:
+    """Ligne compacte pour la liste « candidatures récentes » du tableau de bord."""
+    return html.Div(
+        className="recent-row",
+        children=[
+            html.Div(
+                [
+                    html.Div(app["title"], className="recent-title"),
+                    html.Div(
+                        f"{app['company'] or '—'} · {_fmt_date(app['applied_at'])}",
+                        className="recent-sub",
+                    ),
+                ]
+            ),
+            _status_badge(app["current_status"]),
+        ],
+    )
+
+
+def build_dashboard_body() -> html.Div:
+    """Tuiles + candidatures récentes (partie du tableau de bord rafraîchie en direct)."""
+    recents = recent_applications()[:4]
+    if recents:
+        recent_block = html.Div([_recent_row(a) for a in recents])
+    else:
+        recent_block = html.Div(
+            "Aucune candidature pour le moment.", className="empty-state"
+        )
+    return html.Div(
+        [
+            build_stat_tiles(),
+            html.Div(
+                className="section-heading",
+                children=[
+                    html.Div("Candidatures récentes", className="title"),
+                    html.Span("Voir tout →", id="dash-see-all", n_clicks=0,
+                              className="link-accent"),
+                ],
+            ),
+            recent_block,
+        ]
+    )
 
 
 def recent_applications() -> list[dict]:
@@ -407,38 +477,66 @@ def build_filter_bar() -> dbc.Card:
 # Layout de l'onglet
 # ---------------------------------------------------------------------------
 
-def home_layout() -> html.Div:
-    # Le contenu dynamique est initialisé directement (dcc.Tabs remonte l'onglet
-    # à chaque changement) ; les callbacks mettent ensuite à jour ces sections.
+_WEEKDAYS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+_MONTHS = [
+    "janvier", "février", "mars", "avril", "mai", "juin", "juillet",
+    "août", "septembre", "octobre", "novembre", "décembre",
+]
+
+
+def _french_long_date(d: date) -> str:
+    label = f"{_WEEKDAYS[d.weekday()]} {d.day} {_MONTHS[d.month - 1]} {d.year}"
+    return label[0].upper() + label[1:]
+
+
+def _page_header(title: str, subtitle: str | None, new_btn_id: str) -> html.Div:
+    left = [html.H1(title, className="page-title")]
+    if subtitle:
+        left.append(html.Div(subtitle, className="page-subtitle"))
+    return html.Div(
+        className="page-header",
+        children=[
+            html.Div(left),
+            dbc.Button("＋ Nouvelle candidature", id=new_btn_id,
+                       className="btn-accent", n_clicks=0),
+        ],
+    )
+
+
+def dashboard_layout() -> html.Div:
+    """Page « Tableau de bord » : CV actuel, indicateurs et candidatures récentes."""
     return html.Div(
         [
+            _page_header("Tableau de bord", _french_long_date(date.today()),
+                         "btn-new-app-dash"),
             html.Div(build_cv_section(), id="cv-section"),
+            html.Div(build_dashboard_body(), id="dashboard-body"),
+        ]
+    )
+
+
+def candidatures_layout() -> html.Div:
+    """Page « Candidatures » : filtres + liste complète."""
+    return html.Div(
+        [
+            _page_header("Candidatures", None, "btn-new-app"),
             html.Div(
                 className="d-flex gap-2 flex-wrap mb-3",
                 children=[
-                    dbc.Button("＋ Nouvelle candidature", id="btn-new-app",
-                               className="btn-accent", n_clicks=0),
                     dbc.Button("⬇ Exporter (.ods)", id="btn-export-ods",
-                               className="btn-outline-accent", n_clicks=0),
-                    dbc.Button("📊 Statistiques", id="btn-toggle-stats",
                                className="btn-ghost", n_clicks=0),
-                    dbc.Button("↻ Réessayer les copies manquantes", id="btn-retry-annonces",
-                               className="btn-ghost", n_clicks=0),
+                    dbc.Button("↻ Réessayer les copies manquantes",
+                               id="btn-retry-annonces", className="btn-ghost",
+                               n_clicks=0),
                 ],
             ),
             html.Div(id="action-feedback", className="mb-2"),
-            dbc.Collapse(
-                html.Div(build_stats_section(), id="stats-section"),
-                id="stats-collapse",
-                is_open=False,
-            ),
-            # État des filtres actifs (réinitialisé au changement d'onglet).
+            # État des filtres actifs (réinitialisé au montage de la page).
             dcc.Store(id="active-filters", data=None),
             build_filter_bar(),
             html.Div(
-                className="d-flex justify-content-between align-items-center mb-2",
+                className="section-heading",
                 children=[
-                    html.H5("Candidatures", className="mb-0"),
                     html.Span(
                         f"{CONFIG.get('home_recent_count', 10)} plus récentes",
                         id="search-summary", className="muted",
@@ -446,9 +544,21 @@ def home_layout() -> html.Div:
                 ],
             ),
             dcc.Loading(
-                html.Div(render_application_cards(recent_applications()), id="apps-list"),
+                html.Div(render_application_cards(recent_applications()),
+                         id="apps-list"),
                 type="default",
             ),
             dcc.Download(id="download-ods"),
+        ]
+    )
+
+
+def stats_layout() -> html.Div:
+    """Page « Statistiques »."""
+    return html.Div(
+        [
+            html.H1("Statistiques", className="page-title",
+                    style={"marginBottom": "26px"}),
+            html.Div(build_stats_section(), id="stats-section"),
         ]
     )

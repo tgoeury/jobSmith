@@ -26,10 +26,9 @@ def build_letters_list(selected_id: int | None = None) -> html.Div:
         active = " active-letter" if letter["id"] == selected_id else ""
         items.append(
             html.Div(
-                className=f"card letter-item mb-2{active}",
+                className=f"letter-item mb-2{active}",
                 id={"type": "letter-item", "index": letter["id"]},
                 n_clicks=0,
-                style={"padding": "0.6rem 0.8rem"},
                 children=[
                     html.Div(letter["name"], style={"fontWeight": 600}),
                     html.Div(
@@ -46,6 +45,8 @@ def build_letters_list(selected_id: int | None = None) -> html.Div:
 def letters_layout() -> html.Div:
     return html.Div(
         [
+            html.H1("Lettres de motivation", className="page-title",
+                    style={"marginBottom": "24px"}),
             dbc.Row(
                 [
                     dbc.Col(

@@ -9,9 +9,10 @@ from flask import abort, send_from_directory
 from .config import ANNONCES_DIR, BASE_DIR, CONFIG, CV_DIR
 from .database import init_db
 from . import repository as repo
-from .ui.home import home_layout
+from .ui.home import candidatures_layout, dashboard_layout, stats_layout
 from .ui.letters import letters_layout
 from .ui.modals import all_modals
+from .ui.sidebar import sidebar
 
 # Base de données prête avant toute requête.
 init_db()
@@ -40,64 +41,54 @@ def _stores() -> html.Div:
     )
 
 
-# Styles des onglets (dcc.Tabs) — thème anthracite / ambre en inline pour éviter
-# tout conflit avec les styles par défaut clairs de dcc.Tabs.
-_TAB_STYLE = {
-    "backgroundColor": "transparent",
-    "border": "none",
-    "borderBottom": "1px solid #3a362f",
-    "color": "#a49e92",
-    "padding": "0.6rem 1.1rem",
-}
-_TAB_SELECTED = {
-    "backgroundColor": "transparent",
-    "border": "none",
-    "borderBottom": "2px solid #d9843a",
-    "color": "#d9843a",
-    "fontWeight": "600",
-    "padding": "0.6rem 1.1rem",
-}
+# Pages disponibles (ordre = ordre de la barre latérale).
+_PAGES = ("dashboard", "candidatures", "stats", "letters")
+
+
+def _page_content(page: str) -> html.Div:
+    if page == "candidatures":
+        return candidatures_layout()
+    if page == "stats":
+        return stats_layout()
+    if page == "letters":
+        return letters_layout()
+    return dashboard_layout()
 
 
 app.layout = html.Div(
     id="app-container",
+    className="app-shell",
     children=[
         _stores(),
+        sidebar(active="dashboard"),
         html.Div(
-            className="app-header",
-            children=[
-                html.H1(
-                    [html.Span("● ", className="accent-bar"),
-                     CONFIG.get("app_title", "Assistant Emploi")]
-                ),
-            ],
+            _page_content("dashboard"),
+            id="page-content",
+            className="main-area",
         ),
-        dcc.Tabs(
-            id="main-tabs",
-            value="tab-home",
-            children=[
-                dcc.Tab(label="Accueil", value="tab-home",
-                        style=_TAB_STYLE, selected_style=_TAB_SELECTED),
-                dcc.Tab(label="Lettres de motivation", value="tab-letters",
-                        style=_TAB_STYLE, selected_style=_TAB_SELECTED),
-            ],
-            style={"borderBottom": "1px solid #3a362f"},
-        ),
-        html.Div(id="tab-content", className="mt-3"),
         all_modals(),
     ],
 )
 
 
 @app.callback(
-    dash.Output("tab-content", "children"),
-    dash.Input("main-tabs", "value"),
+    dash.Output("page-content", "children"),
+    [dash.Output(f"nav-{p}", "className") for p in _PAGES],
+    [dash.Input(f"nav-{p}", "n_clicks") for p in _PAGES],
+    dash.Input("dash-see-all", "n_clicks"),
+    prevent_initial_call=True,
 )
-def _render_tab(active_tab):
-    """Monte le contenu de l'onglet actif (dcc.Tabs ne rend que l'onglet courant)."""
-    if active_tab == "tab-letters":
-        return letters_layout()
-    return home_layout()
+def _navigate(*_clicks):
+    """Monte la page choisie dans la barre latérale et met à jour l'état actif."""
+    trigger = dash.ctx.triggered_id or "nav-dashboard"
+    if trigger == "dash-see-all":
+        page = "candidatures"
+    else:
+        page = str(trigger).replace("nav-", "")
+    classes = [
+        "nav-item active" if p == page else "nav-item" for p in _PAGES
+    ]
+    return (_page_content(page), *classes)
 
 
 # ---------------------------------------------------------------------------
