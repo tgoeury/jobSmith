@@ -1,0 +1,20 @@
+# Données locales et artefacts — jamais dans l'image.
+data/
+_shot/
+**/__pycache__/
+*.pyc
+
+# Documents personnels éventuels (l'image démarre sur une base vide).
+*.ods
+*.pdf
+
+# Développement / tests / VCS
+tests/
+.git/
+.github/
+.gitignore
+pytest.ini
+requirements-dev.txt
+README.md
+.venv/
+venv/
