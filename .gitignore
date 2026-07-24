@@ -1,0 +1,17 @@
+
+__pycache__/
+*.pyc
+data/assistant.db
+data/cv/
+data/annonces/
+data/exports/
+.venv/
+venv/
+
+# Documents personnels (CV, tableurs de candidatures) — jamais publiés
+*.ods
+*.pdf
+
+# Scratch / captures
+_shot*/
+_dockervol/

@@ -1,0 +1,493 @@
+"""Callbacks des candidatures : rendu, création, édition, statuts, commentaires, export."""
+from __future__ import annotations
+
+from datetime import date, datetime
+
+import dash_bootstrap_components as dbc
+from dash import ALL, Input, Output, State, callback, ctx, dcc, html, no_update
+from dash.exceptions import PreventUpdate
+
+from .. import repository as repo
+from ..config import CONFIG
+from ..exporter import export_applications_ods
+from ..scraper import download_annonce, is_http_url
+from ..ui.home import (
+    build_cv_section,
+    build_stats_section,
+    recent_applications,
+    render_application_cards,
+)
+
+DEFAULT_STATUS = CONFIG.get("default_status", "Candidature envoyée")
+
+
+def _clicked() -> bool:
+    """True si le callback a été déclenché par un vrai clic (n_clicks non nul)."""
+    return bool(ctx.triggered and ctx.triggered[0]["value"])
+
+
+def _cv_options() -> list[dict]:
+    opts = []
+    for cv in repo.list_cvs():
+        label = cv["name"] + (" (actuel)" if cv["is_current"] else "")
+        opts.append({"label": label, "value": str(cv["id"])})
+    return opts
+
+
+def _parse_date_str(value: str | None) -> date | None:
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _download_for(app_id: int, url: str | None) -> None:
+    """Télécharge la copie locale d'une annonce et enregistre le résultat."""
+    if is_http_url(url):
+        ok, path, _msg = download_annonce(url, app_id)
+        repo.set_annonce_result(app_id, ok, path)
+
+
+# ---------------------------------------------------------------------------
+# Rendu réactif
+# ---------------------------------------------------------------------------
+
+@callback(
+    Output("cv-section", "children"),
+    Input("refresh-apps", "data"),
+    prevent_initial_call=True,
+)
+def _render_cv(_refresh):
+    return build_cv_section()
+
+
+@callback(
+    Output("apps-list", "children"),
+    Output("search-summary", "children"),
+    Input("active-filters", "data"),
+    Input("refresh-apps", "data"),
+    prevent_initial_call=True,
+)
+def _render_apps(filters, _refresh):
+    """Rend la liste : résultats filtrés si des filtres sont actifs, sinon les récentes."""
+    if filters:
+        apps = repo.search_applications(
+            title=filters.get("title"),
+            company=filters.get("company"),
+            status=filters.get("status") or None,
+            date_from=_parse_date_str(filters.get("date_from")),
+            date_to=_parse_date_str(filters.get("date_to")),
+        )
+        summary = f"{len(apps)} résultat(s)"
+    else:
+        apps = recent_applications()
+        summary = f"{len(apps)} plus récentes"
+    return render_application_cards(apps), summary
+
+
+@callback(
+    Output("active-filters", "data"),
+    Input("btn-search", "n_clicks"),
+    State("filter-title", "value"),
+    State("filter-company", "value"),
+    State("filter-status", "value"),
+    State("filter-date-from", "value"),
+    State("filter-date-to", "value"),
+    prevent_initial_call=True,
+)
+def _apply_filters(_n, title, company, status, date_from, date_to):
+    filters: dict = {}
+    if (title or "").strip():
+        filters["title"] = title.strip()
+    if (company or "").strip():
+        filters["company"] = company.strip()
+    if status:
+        filters["status"] = status
+    if date_from:
+        filters["date_from"] = date_from
+    if date_to:
+        filters["date_to"] = date_to
+    # Recherche sans critère = affichage des récentes (évite de tout charger).
+    return filters or None
+
+
+@callback(
+    Output("active-filters", "data", allow_duplicate=True),
+    Output("filter-title", "value"),
+    Output("filter-company", "value"),
+    Output("filter-status", "value"),
+    Output("filter-date-from", "value"),
+    Output("filter-date-to", "value"),
+    Input("btn-reset-search", "n_clicks"),
+    prevent_initial_call=True,
+)
+def _reset_filters(_n):
+    return None, "", "", "", None, None
+
+
+@callback(
+    Output("stats-section", "children"),
+    Input("refresh-apps", "data"),
+    prevent_initial_call=True,
+)
+def _render_stats(_refresh):
+    return build_stats_section()
+
+
+@callback(
+    Output("stats-collapse", "is_open"),
+    Input("btn-toggle-stats", "n_clicks"),
+    State("stats-collapse", "is_open"),
+    prevent_initial_call=True,
+)
+def _toggle_stats(_n, is_open):
+    return not is_open
+
+
+# ---------------------------------------------------------------------------
+# Modale candidature : ouverture (création + édition)
+# ---------------------------------------------------------------------------
+
+@callback(
+    Output("app-modal", "is_open"),
+    Output("app-modal-title", "children"),
+    Output("app-input-date", "value"),
+    Output("app-input-title", "value"),
+    Output("app-input-company", "value"),
+    Output("app-input-url", "value"),
+    Output("app-select-cv", "options"),
+    Output("app-select-cv", "value"),
+    Output("edit-app-id", "data"),
+    Output("app-modal-feedback", "children"),
+    Input("btn-new-app", "n_clicks"),
+    Input({"type": "edit-app", "index": ALL}, "n_clicks"),
+    prevent_initial_call=True,
+)
+def _open_app_modal(_new_clicks, _edit_clicks):
+    if not _clicked():
+        raise PreventUpdate
+
+    options = _cv_options()
+    trigger = ctx.triggered_id
+
+    if trigger == "btn-new-app":
+        current = repo.get_current_cv()
+        return (
+            True,
+            "Nouvelle candidature",
+            date.today().isoformat(),
+            "",
+            "",
+            "",
+            options,
+            str(current["id"]) if current else None,
+            None,
+            "",
+        )
+
+    # Édition
+    app_id = trigger["index"]
+    app = repo.get_application(app_id)
+    if not app:
+        raise PreventUpdate
+    return (
+        True,
+        f"Éditer la candidature #{app_id}",
+        app["applied_at"].isoformat() if app["applied_at"] else "",
+        app["title"] or "",
+        app["company"] or "",
+        app["url"] or "",
+        options,
+        str(app["cv_id"]) if app["cv_id"] else None,
+        app_id,
+        "",
+    )
+
+
+@callback(
+    Output("app-modal", "is_open", allow_duplicate=True),
+    Input("app-modal-cancel", "n_clicks"),
+    prevent_initial_call=True,
+)
+def _cancel_app_modal(_n):
+    return False
+
+
+@callback(
+    Output("app-modal", "is_open", allow_duplicate=True),
+    Output("refresh-apps", "data", allow_duplicate=True),
+    Output("app-modal-feedback", "children", allow_duplicate=True),
+    Output("action-feedback", "children", allow_duplicate=True),
+    Input("app-modal-save", "n_clicks"),
+    State("app-input-date", "value"),
+    State("app-input-title", "value"),
+    State("app-input-company", "value"),
+    State("app-input-url", "value"),
+    State("app-select-cv", "value"),
+    State("edit-app-id", "data"),
+    State("refresh-apps", "data"),
+    prevent_initial_call=True,
+)
+def _save_app(_n, date_str, title, company, url, cv_value, edit_id, refresh):
+    title = (title or "").strip()
+    if not title:
+        return no_update, no_update, dbc.Alert(
+            "L'intitulé du poste est obligatoire.", color="danger", class_name="py-2 mb-0"
+        ), no_update
+
+    applied = _parse_date_str(date_str) or date.today()
+    url = (url or "").strip() or None
+    company = (company or "").strip() or None
+    cv_id = int(cv_value) if cv_value else None
+    downloadable = is_http_url(url)
+
+    if edit_id:
+        old = repo.get_application(edit_id)
+        repo.update_application(
+            edit_id,
+            applied_at=applied,
+            title=title,
+            company=company,
+            url=url,
+            cv_id=cv_id,
+            is_downloadable_url=downloadable,
+        )
+        # (Re)télécharge si l'URL a changé ou si la copie n'est pas encore OK.
+        if downloadable and (
+            not old or old["url"] != url or old["annonce_status"] != "ok"
+        ):
+            _download_for(edit_id, url)
+        msg = "Candidature mise à jour."
+    else:
+        new_id = repo.create_application(
+            applied_at=applied,
+            title=title,
+            company=company,
+            url=url,
+            cv_id=cv_id,
+            is_downloadable_url=downloadable,
+            initial_status=DEFAULT_STATUS,
+        )
+        # Téléchargement APRÈS enregistrement en base.
+        _download_for(new_id, url)
+        msg = "Candidature enregistrée."
+
+    feedback = dbc.Alert(msg, color="success", class_name="py-2 mb-0", duration=3000)
+    return False, (refresh or 0) + 1, "", feedback
+
+
+# ---------------------------------------------------------------------------
+# Modale statut
+# ---------------------------------------------------------------------------
+
+@callback(
+    Output("status-modal", "is_open"),
+    Output("status-modal-app-label", "children"),
+    Output("status-select", "options"),
+    Output("status-select", "value"),
+    Output("status-date", "value"),
+    Output("status-note", "value"),
+    Output("status-app-id", "data"),
+    Output("status-modal-feedback", "children"),
+    Input({"type": "status-app", "index": ALL}, "n_clicks"),
+    prevent_initial_call=True,
+)
+def _open_status_modal(_clicks):
+    if not _clicked():
+        raise PreventUpdate
+    app_id = ctx.triggered_id["index"]
+    app = repo.get_application(app_id)
+    if not app:
+        raise PreventUpdate
+    options = [{"label": s["label"], "value": s["label"]} for s in repo.list_status_types()]
+    label = f"{app['title']} — {app['company'] or ''}"
+    return (
+        True,
+        label,
+        options,
+        app["current_status"],
+        date.today().isoformat(),
+        "",
+        app_id,
+        "",
+    )
+
+
+@callback(
+    Output("status-select", "options", allow_duplicate=True),
+    Output("status-select", "value", allow_duplicate=True),
+    Output("new-status-input", "value"),
+    Output("status-modal-feedback", "children", allow_duplicate=True),
+    Input("add-status-btn", "n_clicks"),
+    State("new-status-input", "value"),
+    prevent_initial_call=True,
+)
+def _add_status_type(_n, new_label):
+    new_label = (new_label or "").strip()
+    if not new_label:
+        raise PreventUpdate
+    repo.add_status_type(new_label)
+    options = [{"label": s["label"], "value": s["label"]} for s in repo.list_status_types()]
+    feedback = dbc.Alert(
+        f"Statut « {new_label} » ajouté.", color="success", class_name="py-1 mb-0",
+        duration=2500,
+    )
+    return options, new_label, "", feedback
+
+
+@callback(
+    Output("status-modal", "is_open", allow_duplicate=True),
+    Input("status-modal-cancel", "n_clicks"),
+    prevent_initial_call=True,
+)
+def _cancel_status_modal(_n):
+    return False
+
+
+@callback(
+    Output("status-modal", "is_open", allow_duplicate=True),
+    Output("refresh-apps", "data", allow_duplicate=True),
+    Input("status-modal-save", "n_clicks"),
+    State("status-select", "value"),
+    State("status-note", "value"),
+    State("status-date", "value"),
+    State("status-app-id", "data"),
+    State("refresh-apps", "data"),
+    prevent_initial_call=True,
+)
+def _save_status(_n, status_label, note, date_str, app_id, refresh):
+    if not app_id or not status_label:
+        raise PreventUpdate
+    changed_on = _parse_date_str(date_str)
+    changed_at = (
+        datetime.combine(changed_on, datetime.now().time())
+        if changed_on
+        else datetime.now()
+    )
+    repo.add_status_event(app_id, status_label, note=note, changed_at=changed_at)
+    return False, (refresh or 0) + 1
+
+
+# ---------------------------------------------------------------------------
+# Commentaires
+# ---------------------------------------------------------------------------
+
+@callback(
+    Output("refresh-apps", "data", allow_duplicate=True),
+    Input({"type": "new-comment-btn", "index": ALL}, "n_clicks"),
+    State({"type": "new-comment-input", "index": ALL}, "value"),
+    State("refresh-apps", "data"),
+    prevent_initial_call=True,
+)
+def _add_comment(_clicks, _values, refresh):
+    if not _clicked():
+        raise PreventUpdate
+    app_id = ctx.triggered_id["index"]
+    mapping = {s["id"]["index"]: s.get("value") for s in ctx.states_list[0]}
+    content = (mapping.get(app_id) or "").strip()
+    if not content:
+        raise PreventUpdate
+    repo.add_comment(app_id, content)
+    return (refresh or 0) + 1
+
+
+@callback(
+    Output("comment-modal", "is_open"),
+    Output("comment-modal-textarea", "value"),
+    Output("comment-edit-id", "data"),
+    Input({"type": "edit-comment", "index": ALL}, "n_clicks"),
+    prevent_initial_call=True,
+)
+def _open_comment_modal(_clicks):
+    if not _clicked():
+        raise PreventUpdate
+    comment_id = ctx.triggered_id["index"]
+    # Recherche du contenu du commentaire.
+    content = ""
+    for app in repo.list_all_applications():
+        for comment in app["comments"]:
+            if comment["id"] == comment_id:
+                content = comment["content"]
+                break
+    return True, content, comment_id
+
+
+@callback(
+    Output("comment-modal", "is_open", allow_duplicate=True),
+    Input("comment-modal-cancel", "n_clicks"),
+    prevent_initial_call=True,
+)
+def _cancel_comment_modal(_n):
+    return False
+
+
+@callback(
+    Output("comment-modal", "is_open", allow_duplicate=True),
+    Output("refresh-apps", "data", allow_duplicate=True),
+    Input("comment-modal-save", "n_clicks"),
+    State("comment-modal-textarea", "value"),
+    State("comment-edit-id", "data"),
+    State("refresh-apps", "data"),
+    prevent_initial_call=True,
+)
+def _save_comment(_n, content, comment_id, refresh):
+    if not comment_id:
+        raise PreventUpdate
+    repo.update_comment(comment_id, content or "")
+    return False, (refresh or 0) + 1
+
+
+@callback(
+    Output("comment-modal", "is_open", allow_duplicate=True),
+    Output("refresh-apps", "data", allow_duplicate=True),
+    Input("comment-modal-delete", "n_clicks"),
+    State("comment-edit-id", "data"),
+    State("refresh-apps", "data"),
+    prevent_initial_call=True,
+)
+def _delete_comment(_n, comment_id, refresh):
+    if not comment_id:
+        raise PreventUpdate
+    repo.delete_comment(comment_id)
+    return False, (refresh or 0) + 1
+
+
+# ---------------------------------------------------------------------------
+# Export ODS & re-téléchargement des copies manquantes
+# ---------------------------------------------------------------------------
+
+@callback(
+    Output("download-ods", "data"),
+    Input("btn-export-ods", "n_clicks"),
+    prevent_initial_call=True,
+)
+def _export_ods(_n):
+    path = export_applications_ods()
+    return dcc.send_file(str(path))
+
+
+@callback(
+    Output("refresh-apps", "data", allow_duplicate=True),
+    Output("action-feedback", "children", allow_duplicate=True),
+    Input("btn-retry-annonces", "n_clicks"),
+    State("refresh-apps", "data"),
+    prevent_initial_call=True,
+)
+def _retry_annonces(_n, refresh):
+    targets = repo.list_pending_annonces()
+    ok = 0
+    for app_id, url in targets:
+        prev = repo.get_application(app_id)
+        _download_for(app_id, url)
+        after = repo.get_application(app_id)
+        if after and after["annonce_status"] == "ok" and (
+            not prev or prev["annonce_status"] != "ok"
+        ):
+            ok += 1
+    feedback = dbc.Alert(
+        f"{ok} nouvelle(s) copie(s) récupérée(s) sur {len(targets)} tentative(s).",
+        color="info", class_name="py-2 mb-0", duration=4000,
+    )
+    return (refresh or 0) + 1, feedback
