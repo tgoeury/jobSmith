@@ -122,4 +122,4 @@ data/                      Base SQLite, CV, annonces, exports (git-ignoré)
 
 ## Licence
 
-À définir par le mainteneur du dépôt (par ex. ajouter un fichier `LICENSE`).
+Distribué sous licence [Apache 2.0](LICENSE).
