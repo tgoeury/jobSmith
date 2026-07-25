@@ -75,13 +75,13 @@ app.layout = html.Div(
     dash.Output("page-content", "children"),
     [dash.Output(f"nav-{p}", "className") for p in _PAGES],
     [dash.Input(f"nav-{p}", "n_clicks") for p in _PAGES],
-    dash.Input("dash-see-all", "n_clicks"),
+    dash.Input({"type": "dash-see-all", "index": dash.ALL}, "n_clicks"),
     prevent_initial_call=True,
 )
 def _navigate(*_clicks):
     """Monte la page choisie dans la barre latérale et met à jour l'état actif."""
     trigger = dash.ctx.triggered_id or "nav-dashboard"
-    if trigger == "dash-see-all":
+    if isinstance(trigger, dict) and trigger.get("type") == "dash-see-all":
         page = "candidatures"
     else:
         page = str(trigger).replace("nav-", "")

@@ -161,19 +161,18 @@ def _render_stats(_refresh):
     Output("app-select-cv", "value"),
     Output("edit-app-id", "data"),
     Output("app-modal-feedback", "children"),
-    Input("btn-new-app", "n_clicks"),
-    Input("btn-new-app-dash", "n_clicks"),
+    Input({"type": "btn-new-app", "scope": ALL}, "n_clicks"),
     Input({"type": "edit-app", "index": ALL}, "n_clicks"),
     prevent_initial_call=True,
 )
-def _open_app_modal(_new_clicks, _new_clicks_dash, _edit_clicks):
+def _open_app_modal(_new_clicks, _edit_clicks):
     if not _clicked():
         raise PreventUpdate
 
     options = _cv_options()
     trigger = ctx.triggered_id
 
-    if isinstance(trigger, str) and trigger.startswith("btn-new-app"):
+    if isinstance(trigger, dict) and trigger.get("type") == "btn-new-app":
         current = repo.get_current_cv()
         return (
             True,

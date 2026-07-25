@@ -400,7 +400,8 @@ def build_dashboard_body() -> html.Div:
                 className="section-heading",
                 children=[
                     html.Div("Candidatures récentes", className="title"),
-                    html.Span("Voir tout →", id="dash-see-all", n_clicks=0,
+                    html.Span("Voir tout →",
+                              id={"type": "dash-see-all", "index": 0}, n_clicks=0,
                               className="link-accent"),
                 ],
             ),
@@ -489,7 +490,11 @@ def _french_long_date(d: date) -> str:
     return label[0].upper() + label[1:]
 
 
-def _page_header(title: str, subtitle: str | None, new_btn_id: str) -> html.Div:
+def _page_header(title: str, subtitle: str | None, new_btn_scope: str) -> html.Div:
+    """`new_btn_scope` distingue le bouton selon la page (dashboard/candidatures) :
+    ces pages ne sont jamais montées simultanément, donc l'id doit être un id à motif
+    (pattern-matching) pour que Dash ne plante pas côté client quand l'autre page est
+    affichée et que ce bouton n'existe plus dans le layout courant."""
     left = [html.H1(title, className="page-title")]
     if subtitle:
         left.append(html.Div(subtitle, className="page-subtitle"))
@@ -497,7 +502,8 @@ def _page_header(title: str, subtitle: str | None, new_btn_id: str) -> html.Div:
         className="page-header",
         children=[
             html.Div(left),
-            dbc.Button("＋ Nouvelle candidature", id=new_btn_id,
+            dbc.Button("＋ Nouvelle candidature",
+                       id={"type": "btn-new-app", "scope": new_btn_scope},
                        className="btn-accent", n_clicks=0),
         ],
     )
@@ -508,7 +514,7 @@ def dashboard_layout() -> html.Div:
     return html.Div(
         [
             _page_header("Tableau de bord", _french_long_date(date.today()),
-                         "btn-new-app-dash"),
+                         "dashboard"),
             html.Div(build_cv_section(), id="cv-section"),
             html.Div(build_dashboard_body(), id="dashboard-body"),
         ]
@@ -519,7 +525,7 @@ def candidatures_layout() -> html.Div:
     """Page « Candidatures » : filtres + liste complète."""
     return html.Div(
         [
-            _page_header("Candidatures", None, "btn-new-app"),
+            _page_header("Candidatures", None, "candidatures"),
             html.Div(
                 className="d-flex gap-2 flex-wrap mb-3",
                 children=[

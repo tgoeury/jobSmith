@@ -5,10 +5,11 @@ import plotly.graph_objects as go
 
 from .repository import stats_by_current_status, stats_by_cv, stats_last_30_days
 from .ui.theme import (
-    ACCENT,
     GREEN,
+    NEGATIVE_STATUSES,
     PLOTLY_LAYOUT,
     POSITIVE_STATUSES,
+    RED,
     TEXT_MUTED,
     status_color,
 )
@@ -26,44 +27,48 @@ def _empty_fig(message: str) -> go.Figure:
 
 
 def figure_global_status() -> go.Figure:
-    """Répartition de toutes les candidatures par statut courant (donut)."""
+    """Répartition de toutes les candidatures par statut courant (barres)."""
     counts = stats_by_current_status()
     if not counts:
         return _empty_fig("Aucune candidature")
     labels = list(counts.keys())
     values = [counts[label] for label in labels]
     colors = [status_color(label) for label in labels]
-    fig = go.Figure(
-        go.Pie(
-            labels=labels,
-            values=values,
-            hole=0.5,
-            marker=dict(colors=colors),
-            textinfo="label+value",
-        )
+    fig = go.Figure(go.Bar(x=labels, y=values, marker_color=colors))
+    fig.update_layout(
+        title=f"Répartition par statut — {sum(values)} candidature(s)",
+        **PLOTLY_LAYOUT,
     )
-    fig.update_layout(title="Statut actuel de toutes les candidatures", **PLOTLY_LAYOUT)
     return fig
 
 
 def figure_by_cv() -> go.Figure:
-    """Par CV : total de candidatures et réponses positives (barres groupées)."""
+    """Par CV : une barre par CV, % réponses positives empilé au-dessus des % négatives."""
     data = stats_by_cv()
     if not data:
         return _empty_fig("Aucune candidature")
     data = sorted(data, key=lambda d: d["total"], reverse=True)
-    names = [d["cv_name"] for d in data]
-    totals = [d["total"] for d in data]
-    positives = [
-        sum(cnt for lbl, cnt in d["statuses"].items() if lbl in POSITIVE_STATUSES)
-        for d in data
-    ]
+    names = [f"{d['cv_name']} (n={d['total']})" for d in data]
+
+    def _pct(entry: dict, statuses: set[str]) -> float:
+        count = sum(cnt for lbl, cnt in entry["statuses"].items() if lbl in statuses)
+        return count / entry["total"] * 100 if entry["total"] else 0
+
+    negatives = [_pct(d, NEGATIVE_STATUSES) for d in data]
+    positives = [_pct(d, POSITIVE_STATUSES) for d in data]
     fig = go.Figure()
-    fig.add_bar(name="Candidatures", x=names, y=totals, marker_color=ACCENT)
-    fig.add_bar(name="Réponses positives", x=names, y=positives, marker_color=GREEN)
+    fig.add_bar(
+        name="Réponses négatives", x=names, y=negatives, marker_color=RED,
+        hovertemplate="%{x}<br>Négatives : %{y:.0f}%<extra></extra>",
+    )
+    fig.add_bar(
+        name="Réponses positives", x=names, y=positives, marker_color=GREEN,
+        hovertemplate="%{x}<br>Positives : %{y:.0f}%<extra></extra>",
+    )
     fig.update_layout(
-        title="Candidatures par CV (repérer les meilleures versions)",
-        barmode="group",
+        title="Candidatures par CV — taux de réponse (repérer les CV qui engagent)",
+        barmode="stack",
+        yaxis=dict(title="% des candidatures", ticksuffix="%", range=[0, 100]),
         **PLOTLY_LAYOUT,
     )
     return fig

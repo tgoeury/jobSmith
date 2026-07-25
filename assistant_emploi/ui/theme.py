@@ -40,6 +40,9 @@ POSITIVE_STATUSES = {
     "Accepté",
 }
 
+# Statuts considérés comme « réponses négatives » pour le suivi par CV.
+NEGATIVE_STATUSES = {"Refus"}
+
 # Séquence de couleurs pour les graphes catégoriels.
 CATEGORICAL = [ACCENT, BLUE, GREEN, YELLOW, RED, PURPLE, "#7ec8c0", TEXT_MUTED]
 

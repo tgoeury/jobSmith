@@ -1,6 +1,6 @@
 {
   "home_recent_count": 10,
-  "app_title": "Assistant Emploi",
+  "app_title": "JobSmith",
   "default_status": "Candidature envoyée",
   "scraper": {
     "timeout_seconds": 20,
