@@ -79,6 +79,8 @@ def _select_letter(_clicks):
     prevent_initial_call=True,
 )
 def _save_letter(_n, letter_id, name, content, refresh):
+    if not _clicked():
+        raise PreventUpdate
     name = (name or "").strip()
     if not name:
         return (
@@ -113,7 +115,7 @@ def _save_letter(_n, letter_id, name, content, refresh):
     prevent_initial_call=True,
 )
 def _delete_letter(_n, letter_id, refresh):
-    if not letter_id:
+    if not _clicked() or not letter_id:
         raise PreventUpdate
     repo.delete_cover_letter(letter_id)
     return None, "", "", (refresh or 0) + 1, build_letters_list(None)
