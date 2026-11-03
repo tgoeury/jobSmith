@@ -31,9 +31,14 @@ def _text(component) -> str:
 
 
 def test_cv_label_shows_cv_inconnu_when_missing():
-    assert "CV inconnu" in _text(_cv_label(None))
-    assert "CV inconnu" not in _text(_cv_label("Mon CV"))
-    assert "Mon CV" in _text(_cv_label("Mon CV"))
+    assert "CV inconnu" in _text(_cv_label({"cv_name": None, "kind": "candidature"}))
+    with_cv = {"cv_name": "Mon CV", "kind": "candidature"}
+    assert "CV inconnu" not in _text(_cv_label(with_cv))
+    assert "Mon CV" in _text(_cv_label(with_cv))
+
+
+def test_cv_label_hidden_for_incoming_contact_without_cv():
+    assert _cv_label({"cv_name": None, "kind": "appel"}) is None
 
 
 def test_cv_section_shows_alert_when_no_cv():

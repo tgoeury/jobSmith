@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker
 
 from .config import DB_PATH
@@ -24,13 +24,31 @@ SessionLocal = sessionmaker(bind=engine, future=True, expire_on_commit=False)
 # Statuts livrés par défaut. Le premier est le statut par défaut d'une candidature.
 SYSTEM_STATUSES = [
     ("Candidature envoyée", 10),
+    ("Contact reçu", 5),  # statut initial d'un contact entrant (RH, chasseur de têtes)
     ("Refus", 90),
 ]
+
+# Colonnes ajoutées après la création initiale du schéma : `create_all` ne modifie pas
+# les tables existantes, on les ajoute donc à la main. (table, colonne, DDL)
+_ADDED_COLUMNS = [
+    ("application", "kind", "VARCHAR(20) NOT NULL DEFAULT 'candidature'"),
+    ("application", "contact", "TEXT"),
+    ("application", "annonce_note", "VARCHAR(300)"),
+]
+
+
+def _add_missing_columns() -> None:
+    with engine.begin() as conn:
+        for table, column, ddl in _ADDED_COLUMNS:
+            existing = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}
+            if column not in existing:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
 
 
 def init_db() -> None:
     """Crée les tables et insère les statuts système manquants (idempotent)."""
     Base.metadata.create_all(engine)
+    _add_missing_columns()
     with SessionLocal() as session:
         existing = {s.label for s in session.query(StatusType).all()}
         for label, order in SYSTEM_STATUSES:

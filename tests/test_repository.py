@@ -35,7 +35,7 @@ def test_downloadable_url_starts_pending():
     app_id = _make_app(url="https://example.com/offre", downloadable=True)
     app = repo.get_application(app_id)
     assert app["annonce_status"] == "pending"
-    assert (app_id, "https://example.com/offre") in repo.list_pending_annonces()
+    assert (app_id, "https://example.com/offre", "Data Scientist") in repo.list_pending_annonces()
 
 
 def test_current_status_is_latest_by_changed_at():
@@ -180,3 +180,52 @@ def test_stats_by_cv_groups_and_counts():
     stats = {row["cv_name"]: row["total"] for row in repo.stats_by_cv()}
     assert stats.get("CV v1") == 2
     assert stats.get("Sans CV") == 1
+
+
+# ---------------------------------------------------------------------------
+# Contacts entrants & résultat des copies d'annonces
+# ---------------------------------------------------------------------------
+
+def test_incoming_contact_kind_and_contact_are_stored():
+    app_id = repo.create_application(
+        applied_at=date.today(), title="Lead Data", company="Cabinet X",
+        url=None, cv_id=None, is_downloadable_url=False,
+        initial_status="Contact reçu", kind="appel", contact="Jeanne, 06 00 00 00 00",
+    )
+    app = repo.get_application(app_id)
+    assert app["kind"] == "appel"
+    assert app["contact"] == "Jeanne, 06 00 00 00 00"
+    assert app["current_status"] == "Contact reçu"
+
+
+def test_default_kind_is_candidature():
+    app = repo.get_application(_make_app())
+    assert app["kind"] == "candidature"
+    assert app["contact"] is None
+
+
+def test_partial_annonce_keeps_path_and_is_retried():
+    app_id = _make_app(url="https://example.com/offre", downloadable=True)
+    repo.set_annonce_result(app_id, "partial", "1.html", "copie douteuse")
+    app = repo.get_application(app_id)
+    assert (app["annonce_status"], app["annonce_path"]) == ("partial", "1.html")
+    assert app["annonce_note"] == "copie douteuse"
+    assert app_id in [t[0] for t in repo.list_pending_annonces()]
+
+
+def test_failed_annonce_drops_path():
+    app_id = _make_app(url="https://example.com/offre", downloadable=True)
+    repo.set_annonce_result(app_id, "failed", "1.html", "HTTP 403")
+    app = repo.get_application(app_id)
+    assert app["annonce_path"] is None
+    assert app["annonce_note"] == "HTTP 403"
+
+
+def test_manual_copy_without_url_survives_edit():
+    app_id = _make_app()
+    repo.set_annonce_result(app_id, "ok", "1.html", "copie saisie manuellement")
+    repo.update_application(
+        app_id, applied_at=date.today(), title="Data Scientist", company="ACME",
+        url=None, cv_id=None, is_downloadable_url=False,
+    )
+    assert repo.get_application(app_id)["annonce_status"] == "ok"

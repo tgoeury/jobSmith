@@ -43,10 +43,13 @@ def _application_to_dict(app: Application) -> dict:
         "applied_at": app.applied_at,
         "title": app.title,
         "company": app.company,
+        "kind": app.kind or "candidature",
+        "contact": app.contact,
         "url": app.url,
         "is_downloadable_url": app.is_downloadable_url,
         "annonce_path": app.annonce_path,
         "annonce_status": app.annonce_status,
+        "annonce_note": app.annonce_note,
         "cv_id": app.cv_id,
         "cv_name": app.cv.name if app.cv else None,
         "current_status": status["label"] if status else None,
@@ -195,12 +198,16 @@ def create_application(
     is_downloadable_url: bool,
     initial_status: str,
     status_at: datetime | None = None,
+    kind: str = "candidature",
+    contact: str | None = None,
 ) -> int:
     with SessionLocal() as session:
         app = Application(
             applied_at=applied_at,
             title=title,
             company=company,
+            kind=kind,
+            contact=contact,
             url=url,
             cv_id=cv_id,
             is_downloadable_url=is_downloadable_url,
@@ -230,6 +237,8 @@ def update_application(
     url: str | None,
     cv_id: int | None,
     is_downloadable_url: bool,
+    kind: str = "candidature",
+    contact: str | None = None,
 ) -> None:
     with SessionLocal() as session:
         app = session.get(Application, app_id)
@@ -238,22 +247,29 @@ def update_application(
         app.applied_at = applied_at
         app.title = title
         app.company = company
+        app.kind = kind
+        app.contact = contact
         app.url = url
         app.cv_id = cv_id
         app.is_downloadable_url = is_downloadable_url
-        if not is_downloadable_url:
+        if not is_downloadable_url and app.annonce_status != "ok":
+            # Une copie saisie manuellement (sans URL) est conservée.
             app.annonce_status = "na"
             app.annonce_path = None
+            app.annonce_note = None
         session.commit()
 
 
-def set_annonce_result(app_id: int, ok: bool, path: str | None) -> None:
+def set_annonce_result(app_id: int, status: str, path: str | None,
+                       note: str | None = None) -> None:
+    """Enregistre le résultat d'un téléchargement ('ok', 'partial' ou 'failed')."""
     with SessionLocal() as session:
         app = session.get(Application, app_id)
         if app is None:
             return
-        app.annonce_status = "ok" if ok else "failed"
-        app.annonce_path = path if ok else None
+        app.annonce_status = status
+        app.annonce_path = path if status in ("ok", "partial") else None
+        app.annonce_note = (note or "")[:300] or None
         session.commit()
 
 
@@ -321,18 +337,18 @@ def search_applications(
     return result
 
 
-def list_pending_annonces() -> list[tuple[int, str]]:
-    """(id, url) des candidatures dont la copie locale reste à télécharger."""
+def list_pending_annonces() -> list[tuple[int, str, str]]:
+    """(id, url, intitulé) des candidatures dont la copie locale reste à (re)faire."""
     with SessionLocal() as session:
         rows = (
-            session.query(Application.id, Application.url)
+            session.query(Application.id, Application.url, Application.title)
             .filter(
                 Application.is_downloadable_url.is_(True),
-                Application.annonce_status.in_(("pending", "failed")),
+                Application.annonce_status.in_(("pending", "failed", "partial")),
             )
             .all()
         )
-        return [(r[0], r[1]) for r in rows]
+        return [(r[0], r[1], r[2]) for r in rows]
 
 
 # ---------------------------------------------------------------------------

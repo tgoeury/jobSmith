@@ -307,3 +307,20 @@ a:hover { color: var(--accent-hover); }
 /* Petites annotations */
 .muted { color: var(--text-muted); }
 .annonce-na { color: var(--text-dim); font-size: 0.82rem; }
+.annonce-warn { color: var(--yellow); }
+
+/* Type d'entrée (appel / mail / message reçu) */
+.kind-badge {
+  border: 1px solid var(--border-soft); border-radius: 999px;
+  padding: 1px 8px; color: var(--text); font-size: 0.76rem; white-space: nowrap;
+}
+
+/* Saisie d'un commentaire : multi-ligne, redimensionnable */
+.comment-input-group textarea { resize: vertical; min-height: 38px; }
+
+/* Notifications globales (coin supérieur droit, au-dessus des modales) */
+.toast-area {
+  position: fixed; top: 16px; right: 16px; z-index: 2000;
+  max-width: 420px;
+}
+.toast-area:empty { display: none; }

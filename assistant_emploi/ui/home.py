@@ -8,7 +8,11 @@ from dash import dcc, html
 
 from .. import repository as repo
 from ..config import CONFIG
+from ..models import APPLICATION_KINDS, DEFAULT_KIND
 from . import theme
+
+# Icône associée à chaque type d'entrée (hors candidature classique).
+_KIND_ICONS = {"appel": "📞", "mail": "✉️", "message": "💬"}
 
 
 # ---------------------------------------------------------------------------
@@ -42,29 +46,53 @@ def _status_badge(label: str | None) -> html.Span:
     )
 
 
-def _cv_label(cv_name: str | None) -> html.Span:
+def _kind_badge(kind: str | None) -> html.Span | None:
+    """Pastille du type d'entrée ; rien pour une candidature classique."""
+    if not kind or kind == DEFAULT_KIND:
+        return None
+    label = APPLICATION_KINDS.get(kind, kind)
+    return html.Span(f"{_KIND_ICONS.get(kind, '•')} {label}", className="kind-badge")
+
+
+def _cv_label(app: dict) -> html.Span | None:
     """Étiquette du CV ; « CV inconnu » (en évidence) si aucun CV valide n'est attaché."""
-    if cv_name:
-        return html.Span(f"CV : {cv_name}")
+    if app["cv_name"]:
+        return html.Span(f"CV : {app['cv_name']}")
+    if app["kind"] != DEFAULT_KIND:
+        return None  # contact entrant : pas de CV envoyé, rien à signaler
     return html.Span("CV inconnu", className="cv-unknown",
                      style={"color": theme.RED, "fontWeight": 600})
 
 
 def _annonce_link(app: dict) -> html.Span:
     status = app["annonce_status"]
+    note = app.get("annonce_note") or ""
     if status == "ok":
         return html.A(
             "📄 Voir l'annonce (copie locale)",
             href=f"/annonce/{app['id']}",
             target="_blank",
+            title=note,
         )
-    if status == "failed":
+    origin = (
+        html.A(" · annonce d'origine", href=app["url"], target="_blank")
+        if app["url"]
+        else ""
+    )
+    if status == "partial":
         return html.Span(
             [
-                html.Span("Copie locale indisponible ", className="annonce-na"),
-                html.A("· annonce d'origine", href=app["url"], target="_blank")
-                if app["url"]
-                else "",
+                html.A("⚠️ Copie locale incomplète ?", href=f"/annonce/{app['id']}",
+                       target="_blank", title=note, className="annonce-warn"),
+                origin,
+            ]
+        )
+    if status == "failed":
+        reason = f" ({note})" if note else ""
+        return html.Span(
+            [
+                html.Span(f"Copie locale indisponible{reason}", className="annonce-na"),
+                origin,
             ]
         )
     # 'na' : moyen de candidater, pas une URL téléchargeable.
@@ -119,6 +147,19 @@ def _status_history(history: list[dict]) -> html.Ul:
 def build_application_card(app: dict) -> dbc.Card:
     idx = app["id"]
     comments = app["comments"]
+    meta = [
+        _kind_badge(app["kind"]),
+        html.Span(f"🗓️ {_fmt_date(app['applied_at'])}"),
+        f"👤 {app['contact']}" if app["contact"] else None,
+        _cv_label(app),
+        _annonce_link(app),
+    ]
+    meta = [item for item in meta if item]
+    meta_children = []
+    for item in meta:
+        if meta_children:
+            meta_children.append(html.Span("  •  "))
+        meta_children.append(item if not isinstance(item, str) else html.Span(item))
 
     return dbc.Card(
         className="candidature-card",
@@ -140,13 +181,7 @@ def build_application_card(app: dict) -> dbc.Card:
                 ),
                 html.Div(
                     className="cand-meta mt-1",
-                    children=[
-                        html.Span(f"🗓️ {_fmt_date(app['applied_at'])}"),
-                        html.Span("  •  "),
-                        _cv_label(app["cv_name"]),
-                        html.Span("  •  "),
-                        _annonce_link(app),
-                    ],
+                    children=meta_children,
                 ),
                 _status_history(app["history"]),
                 # Fil de commentaires
@@ -157,12 +192,15 @@ def build_application_card(app: dict) -> dbc.Card:
                 if comments
                 else html.Div(),
                 dbc.InputGroup(
-                    class_name="mt-2",
+                    class_name="mt-2 comment-input-group",
                     size="sm",
                     children=[
-                        dbc.Input(
+                        # Textarea (et non Input) : conserve retours à la ligne et
+                        # indentation du texte collé.
+                        dbc.Textarea(
                             id={"type": "new-comment-input", "index": idx},
                             placeholder="Ajouter un commentaire…",
+                            rows=2,
                         ),
                         dbc.Button(
                             "Envoyer",
@@ -372,7 +410,11 @@ def _recent_row(app: dict) -> html.Div:
         children=[
             html.Div(
                 [
-                    html.Div(app["title"], className="recent-title"),
+                    html.Div(
+                        f"{_KIND_ICONS[app['kind']]} {app['title']}"
+                        if app["kind"] in _KIND_ICONS else app["title"],
+                        className="recent-title",
+                    ),
                     html.Div(
                         f"{app['company'] or '—'} · {_fmt_date(app['applied_at'])}",
                         className="recent-sub",
@@ -536,7 +578,6 @@ def candidatures_layout() -> html.Div:
                                n_clicks=0),
                 ],
             ),
-            html.Div(id="action-feedback", className="mb-2"),
             # État des filtres actifs (réinitialisé au montage de la page).
             dcc.Store(id="active-filters", data=None),
             build_filter_bar(),

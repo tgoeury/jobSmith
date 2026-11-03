@@ -12,6 +12,9 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
+# Chromium headless pour les annonces rendues en JavaScript (+ dépendances système).
+RUN playwright install --with-deps chromium
+
 # Code de l'application.
 COPY assistant_emploi ./assistant_emploi
 COPY assets ./assets

@@ -22,6 +22,7 @@ PURPLE = "#c48ad9"
 # Couleurs associées aux statuts connus (repli sur ACCENT).
 STATUS_COLORS = {
     "Candidature envoyée": BLUE,
+    "Contact reçu": "#7ec8c0",
     "Refus": RED,
     "1er entretien": YELLOW,
     "2ème entretien (technique)": PURPLE,

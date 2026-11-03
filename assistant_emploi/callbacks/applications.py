@@ -10,7 +10,8 @@ from dash.exceptions import PreventUpdate
 from .. import repository as repo
 from ..config import CONFIG
 from ..exporter import export_applications_ods
-from ..scraper import download_annonce, is_http_url
+from ..models import APPLICATION_KINDS, DEFAULT_KIND
+from ..scraper import download_annonce, is_http_url, save_manual_annonce
 from ..ui.home import (
     build_cv_section,
     build_dashboard_body,
@@ -20,6 +21,8 @@ from ..ui.home import (
 )
 
 DEFAULT_STATUS = CONFIG.get("default_status", "Candidature envoyée")
+# Statut initial d'un contact entrant (appel, mail… d'un RH ou chasseur de têtes).
+CONTACT_STATUS = "Contact reçu"
 
 
 def _clicked() -> bool:
@@ -32,6 +35,7 @@ def _cv_options() -> list[dict]:
     for cv in repo.list_cvs():
         label = cv["name"] + (" (actuel)" if cv["is_current"] else "")
         opts.append({"label": label, "value": str(cv["id"])})
+    opts.append({"label": "Aucun CV", "value": ""})
     return opts
 
 
@@ -44,11 +48,10 @@ def _parse_date_str(value: str | None) -> date | None:
         return None
 
 
-def _download_for(app_id: int, url: str | None) -> None:
+def _download_for(app_id: int, url: str | None, title: str | None = None) -> None:
     """Télécharge la copie locale d'une annonce et enregistre le résultat."""
     if is_http_url(url):
-        ok, path, _msg = download_annonce(url, app_id)
-        repo.set_annonce_result(app_id, ok, path)
+        repo.set_annonce_result(app_id, *download_annonce(url, app_id, title))
 
 
 # ---------------------------------------------------------------------------
@@ -156,7 +159,10 @@ def _render_stats(_refresh):
     Output("app-input-date", "value"),
     Output("app-input-title", "value"),
     Output("app-input-company", "value"),
+    Output("app-input-kind", "value"),
+    Output("app-input-contact", "value"),
     Output("app-input-url", "value"),
+    Output("app-input-annonce-text", "value"),
     Output("app-select-cv", "options"),
     Output("app-select-cv", "value"),
     Output("edit-app-id", "data"),
@@ -180,9 +186,12 @@ def _open_app_modal(_new_clicks, _edit_clicks):
             date.today().isoformat(),
             "",
             "",
+            DEFAULT_KIND,
+            "",
+            "",
             "",
             options,
-            str(current["id"]) if current else None,
+            str(current["id"]) if current else "",
             None,
             "",
         )
@@ -198,12 +207,38 @@ def _open_app_modal(_new_clicks, _edit_clicks):
         app["applied_at"].isoformat() if app["applied_at"] else "",
         app["title"] or "",
         app["company"] or "",
+        app["kind"],
+        app["contact"] or "",
         app["url"] or "",
+        "",
         options,
-        str(app["cv_id"]) if app["cv_id"] else None,
+        str(app["cv_id"]) if app["cv_id"] else "",
         app_id,
         "",
     )
+
+
+@callback(
+    Output("app-label-date", "children"),
+    Output("app-label-title", "children"),
+    Output("app-select-cv", "value", allow_duplicate=True),
+    Input("app-input-kind", "value"),
+    State("edit-app-id", "data"),
+    prevent_initial_call=True,
+)
+def _on_kind_change(kind, edit_id):
+    """Adapte les libellés au type d'entrée ; en création, propose le CV adapté."""
+    is_application = (kind or DEFAULT_KIND) == DEFAULT_KIND
+    date_label = "Date de candidature" if is_application else "Date du contact"
+    title_label = "Intitulé du poste *" if is_application else "Intitulé du poste"
+    if edit_id:
+        cv_value = no_update  # ne jamais écraser le CV d'une entrée existante
+    elif is_application:
+        current = repo.get_current_cv()
+        cv_value = str(current["id"]) if current else ""
+    else:
+        cv_value = ""  # un contact entrant n'est pas lié à un CV envoyé
+    return date_label, title_label, cv_value
 
 
 @callback(
@@ -224,22 +259,37 @@ def _cancel_app_modal(_n):
     State("app-input-date", "value"),
     State("app-input-title", "value"),
     State("app-input-company", "value"),
+    State("app-input-kind", "value"),
+    State("app-input-contact", "value"),
     State("app-input-url", "value"),
+    State("app-input-annonce-text", "value"),
     State("app-select-cv", "value"),
     State("edit-app-id", "data"),
     State("refresh-apps", "data"),
     prevent_initial_call=True,
+    # Le téléchargement de l'annonce peut prendre plusieurs secondes.
+    running=[
+        (Output("app-modal-save", "disabled"), True, False),
+        (Output("app-modal-save", "children"), "Enregistrement…", "Enregistrer"),
+    ],
 )
-def _save_app(_n, date_str, title, company, url, cv_value, edit_id, refresh):
+def _save_app(_n, date_str, title, company, kind, contact, url, annonce_text,
+              cv_value, edit_id, refresh):
+    kind = kind if kind in APPLICATION_KINDS else DEFAULT_KIND
     title = (title or "").strip()
     if not title:
-        return no_update, no_update, dbc.Alert(
-            "L'intitulé du poste est obligatoire.", color="danger", class_name="py-2 mb-0"
-        ), no_update
+        if kind == DEFAULT_KIND:
+            return no_update, no_update, dbc.Alert(
+                "L'intitulé du poste est obligatoire.", color="danger",
+                class_name="py-2 mb-0",
+            ), no_update
+        title = "Poste non précisé"
 
     applied = _parse_date_str(date_str) or date.today()
     url = (url or "").strip() or None
     company = (company or "").strip() or None
+    contact = (contact or "").strip() or None
+    annonce_text = (annonce_text or "").strip()
     cv_id = int(cv_value) if cv_value else None
     downloadable = is_http_url(url)
 
@@ -250,29 +300,38 @@ def _save_app(_n, date_str, title, company, url, cv_value, edit_id, refresh):
             applied_at=applied,
             title=title,
             company=company,
+            kind=kind,
+            contact=contact,
             url=url,
             cv_id=cv_id,
             is_downloadable_url=downloadable,
         )
+        if annonce_text:
+            repo.set_annonce_result(edit_id, *save_manual_annonce(edit_id, annonce_text, url))
         # (Re)télécharge si l'URL a changé ou si la copie n'est pas encore OK.
-        if downloadable and (
+        elif downloadable and (
             not old or old["url"] != url or old["annonce_status"] != "ok"
         ):
-            _download_for(edit_id, url)
-        msg = "Candidature mise à jour."
+            _download_for(edit_id, url, title)
+        msg = "Entrée mise à jour."
     else:
         new_id = repo.create_application(
             applied_at=applied,
             title=title,
             company=company,
+            kind=kind,
+            contact=contact,
             url=url,
             cv_id=cv_id,
             is_downloadable_url=downloadable,
-            initial_status=DEFAULT_STATUS,
+            initial_status=DEFAULT_STATUS if kind == DEFAULT_KIND else CONTACT_STATUS,
         )
         # Téléchargement APRÈS enregistrement en base.
-        _download_for(new_id, url)
-        msg = "Candidature enregistrée."
+        if annonce_text:
+            repo.set_annonce_result(new_id, *save_manual_annonce(new_id, annonce_text, url))
+        else:
+            _download_for(new_id, url, title)
+        msg = "Candidature enregistrée." if kind == DEFAULT_KIND else "Contact enregistré."
 
     feedback = dbc.Alert(msg, color="success", class_name="py-2 mb-0", duration=3000)
     return False, (refresh or 0) + 1, "", feedback
@@ -478,9 +537,9 @@ def _export_ods(_n):
 def _retry_annonces(_n, refresh):
     targets = repo.list_pending_annonces()
     ok = 0
-    for app_id, url in targets:
+    for app_id, url, title in targets:
         prev = repo.get_application(app_id)
-        _download_for(app_id, url)
+        _download_for(app_id, url, title)
         after = repo.get_application(app_id)
         if after and after["annonce_status"] == "ok" and (
             not prev or prev["annonce_status"] != "ok"

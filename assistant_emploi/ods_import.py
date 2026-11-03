@@ -32,7 +32,7 @@ import pandas as pd
 from .config import CONFIG, CV_DIR
 from .database import init_db
 from . import repository as repo
-from .scraper import download_annonce, is_http_url
+from .scraper import AnnonceResult, download_annonce, is_http_url
 
 DEFAULT_STATUS = CONFIG.get("default_status", "Candidature envoyée")
 # Variante d'orthographe fréquente à normaliser vers le statut par défaut.
@@ -150,16 +150,16 @@ def download_all(targets: list[tuple[int, str]], workers: int = 8) -> None:
         for future in as_completed(futures):
             app_id = futures[future]
             try:
-                ok, path, _msg = future.result()
-            except Exception:  # noqa: BLE001 - best-effort
-                ok, path = False, None
-            results.append((app_id, ok, path))
+                result = future.result()
+            except Exception as exc:  # noqa: BLE001 - best-effort
+                result = AnnonceResult("failed", None, str(exc))
+            results.append((app_id, result))
 
     # Écriture séquentielle (évite les verrous SQLite).
     ok_count = 0
-    for app_id, ok, path in results:
-        repo.set_annonce_result(app_id, ok, path)
-        ok_count += int(ok)
+    for app_id, result in results:
+        repo.set_annonce_result(app_id, *result)
+        ok_count += int(result.status == "ok")
     print(f"  ✓ copies locales : {ok_count} réussie(s) / {len(targets)} tentée(s)")
 
 

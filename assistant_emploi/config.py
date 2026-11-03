@@ -29,6 +29,9 @@ _DEFAULTS = {
     "default_status": "Candidature envoyée",
     "scraper": {
         "timeout_seconds": 20,
+        # Repli sur un Chromium headless (Playwright) si la page semble vide.
+        "browser_fallback": True,
+        "browser_timeout_seconds": 30,
         "user_agent": (
             "Mozilla/5.0 (X11; Linux x86_64; rv:125.0) "
             "Gecko/20100101 Firefox/125.0"

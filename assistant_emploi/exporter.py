@@ -9,9 +9,10 @@ from odf.table import Table, TableCell, TableRow
 from odf.text import P
 
 from .config import EXPORTS_DIR
+from .models import APPLICATION_KINDS
 from .repository import list_all_applications
 
-COLUMNS = ["Date", "Poste", "Entreprise", "Dernier statut", "URL"]
+COLUMNS = ["Date", "Type", "Poste", "Entreprise", "Contact", "Dernier statut", "URL"]
 
 
 def _cell(value: str) -> TableCell:
@@ -43,8 +44,10 @@ def export_applications_ods(path: Path | None = None) -> Path:
     for app in list_all_applications():
         row = TableRow()
         row.addElement(_cell(_fmt_date(app["applied_at"])))
+        row.addElement(_cell(APPLICATION_KINDS.get(app["kind"], app["kind"])))
         row.addElement(_cell(app["title"]))
         row.addElement(_cell(app["company"] or ""))
+        row.addElement(_cell(app["contact"] or ""))
         row.addElement(_cell(app["current_status"] or ""))
         row.addElement(_cell(app["url"] or ""))
         table.addElement(row)

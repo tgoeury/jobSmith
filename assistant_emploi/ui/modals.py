@@ -4,6 +4,8 @@ from __future__ import annotations
 import dash_bootstrap_components as dbc
 from dash import dcc, html
 
+from ..models import APPLICATION_KINDS, DEFAULT_KIND
+
 
 def application_modal() -> dbc.Modal:
     """Modale partagée : nouvelle candidature ET édition."""
@@ -15,11 +17,21 @@ def application_modal() -> dbc.Modal:
             dbc.ModalHeader(dbc.ModalTitle(id="app-modal-title")),
             dbc.ModalBody(
                 [
+                    dbc.Label("Type"),
+                    dbc.RadioItems(
+                        id="app-input-kind",
+                        options=[{"label": label, "value": key}
+                                 for key, label in APPLICATION_KINDS.items()],
+                        value=DEFAULT_KIND,
+                        inline=True,
+                        class_name="mb-3",
+                    ),
                     dbc.Row(
                         [
                             dbc.Col(
                                 [
-                                    dbc.Label("Date de candidature"),
+                                    dbc.Label("Date de candidature",
+                                              id="app-label-date"),
                                     dbc.Input(id="app-input-date", type="date"),
                                 ],
                                 md=6,
@@ -34,12 +46,16 @@ def application_modal() -> dbc.Modal:
                         ],
                         class_name="mb-3",
                     ),
-                    dbc.Label("Intitulé du poste *"),
+                    dbc.Label("Intitulé du poste *", id="app-label-title"),
                     dbc.Input(id="app-input-title", type="text",
                               placeholder="Data Scientist (H/F)", class_name="mb-3"),
                     dbc.Label("Entreprise"),
                     dbc.Input(id="app-input-company", type="text",
                               placeholder="Nom de l'entreprise", class_name="mb-3"),
+                    dbc.Label("Contact"),
+                    dbc.Input(id="app-input-contact", type="text",
+                              placeholder="Nom, cabinet, téléphone, e-mail…",
+                              class_name="mb-3"),
                     dbc.Label("URL de l'annonce ou moyen de candidater"),
                     dbc.Textarea(
                         id="app-input-url",
@@ -52,6 +68,24 @@ def application_modal() -> dbc.Modal:
                         "sera téléchargée après l'enregistrement.",
                         className="muted",
                         style={"fontSize": "0.8rem"},
+                    ),
+                    html.Details(
+                        className="mt-3",
+                        children=[
+                            html.Summary(
+                                "Coller le texte de l'annonce (si la copie automatique "
+                                "échoue)",
+                                className="muted",
+                                style={"cursor": "pointer", "fontSize": "0.85rem"},
+                            ),
+                            dbc.Textarea(
+                                id="app-input-annonce-text",
+                                placeholder="Texte de l'annonce ou du mail reçu. "
+                                            "Remplace la copie locale actuelle.",
+                                style={"height": "140px"},
+                                class_name="mt-2",
+                            ),
+                        ],
                     ),
                     html.Div(id="app-modal-feedback", className="mt-2"),
                 ]
@@ -166,7 +200,7 @@ def comment_modal() -> dbc.Modal:
             dbc.ModalBody(
                 [
                     dbc.Textarea(id="comment-modal-textarea",
-                                 style={"height": "120px"}),
+                                 style={"height": "200px"}),
                     html.Div(id="comment-modal-feedback", className="mt-2"),
                 ]
             ),

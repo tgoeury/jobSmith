@@ -21,6 +21,17 @@ class Base(DeclarativeBase):
     pass
 
 
+# Nature d'une entrée du suivi : candidature envoyée ou contact entrant (RH, chasseur
+# de têtes…). Clé stockée en base -> libellé affiché.
+APPLICATION_KINDS = {
+    "candidature": "Candidature",
+    "appel": "Appel reçu",
+    "mail": "Mail reçu",
+    "message": "Message reçu (LinkedIn…)",
+}
+DEFAULT_KIND = "candidature"
+
+
 class CV(Base):
     __tablename__ = "cv"
 
@@ -53,14 +64,22 @@ class Application(Base):
     applied_at: Mapped[date] = mapped_column(Date)
     title: Mapped[str] = mapped_column(String(400))
     company: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    # Clé de APPLICATION_KINDS.
+    kind: Mapped[str] = mapped_column(
+        String(20), default=DEFAULT_KIND, server_default=DEFAULT_KIND
+    )
+    # Interlocuteur (nom, cabinet, téléphone, e-mail…), texte libre.
+    contact: Mapped[str | None] = mapped_column(Text, nullable=True)
     # URL de l'annonce OU moyen de candidater (ex. « Candidatures FT »).
     url: Mapped[str | None] = mapped_column(Text, nullable=True)
     # True si `url` est une vraie URL http(s) téléchargeable.
     is_downloadable_url: Mapped[bool] = mapped_column(Boolean, default=False)
     # Chemin relatif de la copie locale de l'annonce (dans data/annonces/).
     annonce_path: Mapped[str | None] = mapped_column(String(300), nullable=True)
-    # 'na' (pas d'URL), 'pending', 'ok', 'failed'.
+    # 'na' (pas d'URL), 'pending', 'ok', 'partial' (copie douteuse), 'failed'.
     annonce_status: Mapped[str] = mapped_column(String(20), default="na")
+    # Explication du dernier téléchargement (raison de l'échec, méthode utilisée…).
+    annonce_note: Mapped[str | None] = mapped_column(String(300), nullable=True)
 
     cv_id: Mapped[int | None] = mapped_column(ForeignKey("cv.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)

@@ -32,6 +32,7 @@ def test_export_produces_valid_ods(tmp_path):
     refus_row = df[df["Poste"] == "Data Scientist"].iloc[0]
     assert refus_row["Dernier statut"] == "Refus"
     assert refus_row["URL"] == "https://example.com/1"
+    assert refus_row["Type"] == "Candidature"
 
 
 def test_export_empty_db_has_header_only(tmp_path):

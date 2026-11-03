@@ -67,6 +67,10 @@ app.layout = html.Div(
             className="main-area",
         ),
         all_modals(),
+        # Notifications globales : présentes sur toutes les pages, car un callback
+        # dont une sortie littérale manque au layout n'est pas exécuté (cf. création
+        # d'une candidature depuis le tableau de bord).
+        html.Div(id="action-feedback", className="toast-area"),
     ],
 )
 
@@ -80,6 +84,10 @@ app.layout = html.Div(
 )
 def _navigate(*_clicks):
     """Monte la page choisie dans la barre latérale et met à jour l'état actif."""
+    # « Voir tout → » est recréé (n_clicks=0) à chaque rafraîchissement du tableau de
+    # bord : ce n'est pas un clic, sinon on quitterait la page après chaque ajout.
+    if not any(t["value"] for t in dash.ctx.triggered):
+        raise dash.exceptions.PreventUpdate
     trigger = dash.ctx.triggered_id or "nav-dashboard"
     if isinstance(trigger, dict) and trigger.get("type") == "dash-see-all":
         page = "candidatures"
@@ -101,7 +109,13 @@ def serve_annonce(app_id: int):
     if application and application["annonce_path"]:
         file_path = ANNONCES_DIR / application["annonce_path"]
         if file_path.exists():
-            return send_from_directory(str(ANNONCES_DIR), application["annonce_path"])
+            response = send_from_directory(str(ANNONCES_DIR), application["annonce_path"])
+            # Copie figée et servie depuis l'origine de l'application : aucun script
+            # de la page d'origine ne doit s'y exécuter (bandeaux, re-rendus, XSS).
+            response.headers["Content-Security-Policy"] = (
+                "script-src 'none'; object-src 'none'"
+            )
+            return response
     return (
         "<!doctype html><meta charset='utf-8'><title>Copie indisponible</title>"
         "<body style='background:#1c1b19;color:#eae6df;font-family:sans-serif;"

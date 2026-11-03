@@ -16,11 +16,20 @@ Les données restent **entièrement locales** (base SQLite dans `data/`).
 - **Recherche** : filtres par intitulé de poste, entreprise, statut et plage de dates.
 - **Candidatures** : création / édition (tous les champs), suivi de **statut horodaté**
   (historique complet + statut courant), ajout de nouveaux types de statut depuis l'app,
-  commentaires libres éditables (dates de création et de modification).
+  commentaires libres éditables (mise en forme du texte collé conservée, dates de
+  création et de modification).
+- **Contacts entrants** : appels, mails ou messages reçus de RH / chasseurs de têtes se
+  saisissent dans la même fenêtre (champ « Type »), avec un champ « Contact » ; ils
+  démarrent au statut « Contact reçu ».
 - **Copies d'annonces** : si une URL http(s) est fournie, la page est enregistrée
-  localement *après* l'enregistrement et consultable dans un nouvel onglet.
+  localement *après* l'enregistrement et consultable dans un nouvel onglet. Si la page
+  téléchargée ne contient pas l'annonce (site en JavaScript, mur de cookies, blocage
+  403), elle est rendue dans un Chromium headless (Playwright) qui accepte le bandeau
+  de cookies ; les données structurées `JobPosting` servent de repli. Une copie douteuse
+  ou un échec est signalé sur la carte avec sa raison. En dernier recours, le texte de
+  l'annonce peut être collé à la main dans la fenêtre d'édition.
 - **CV** : upload d'une nouvelle version (devient le CV actuel, les précédentes conservées).
-- **Export ODS** : Date, Poste, Entreprise, Dernier statut, URL.
+- **Export ODS** : Date, Type, Poste, Entreprise, Contact, Dernier statut, URL.
 - **Statistiques** : répartition par statut, activité des 30 derniers jours, candidatures
   par CV (pour repérer les meilleures versions).
 - **Lettres de motivation** : création / lecture / modification / suppression, nombre de
@@ -30,6 +39,7 @@ Les données restent **entièrement locales** (base SQLite dans `data/`).
 
 ```bash
 pip install -r requirements.txt
+playwright install chromium   # optionnel : annonces rendues en JavaScript
 python run.py            # http://127.0.0.1:8050
 ```
 
@@ -73,6 +83,7 @@ Les URLs http(s) déclenchent le téléchargement best-effort d'une copie locale
 | `app_title` | Titre affiché |
 | `default_status` | Statut initial d'une nouvelle candidature |
 | `scraper.timeout_seconds` / `scraper.user_agent` | Téléchargement des annonces |
+| `scraper.browser_fallback` / `scraper.browser_timeout_seconds` | Repli sur un navigateur headless |
 | `host` / `port` / `debug` | Serveur |
 
 Le dossier de données est surchargé par la variable d'environnement
