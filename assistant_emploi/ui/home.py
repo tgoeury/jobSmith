@@ -139,7 +139,19 @@ def _status_history(history: list[dict]) -> html.Ul:
         if event.get("note"):
             line += f" ({event['note']})"
         items.append(
-            html.Li([html.Span(className="dot", style={"backgroundColor": color}), line])
+            html.Li(
+                [
+                    html.Span(className="dot", style={"backgroundColor": color}),
+                    line,
+                    html.Button(
+                        "✎",
+                        id={"type": "edit-status-event", "index": event["id"]},
+                        className="status-edit-btn",
+                        n_clicks=0,
+                        title="Modifier cette étape",
+                    ),
+                ]
+            )
         )
     return html.Ul(items, className="status-history")
 

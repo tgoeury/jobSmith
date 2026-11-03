@@ -341,35 +341,72 @@ def _save_app(_n, date_str, title, company, kind, contact, url, annonce_text,
 # Modale statut
 # ---------------------------------------------------------------------------
 
+_DELETE_HIDDEN = {"display": "none"}
+_DELETE_SHOWN = {"color": "var(--red)"}
+
+
 @callback(
     Output("status-modal", "is_open"),
+    Output("status-modal-title", "children"),
+    Output("status-select-label", "children"),
     Output("status-modal-app-label", "children"),
     Output("status-select", "options"),
     Output("status-select", "value"),
     Output("status-date", "value"),
     Output("status-note", "value"),
     Output("status-app-id", "data"),
+    Output("status-event-id", "data"),
+    Output("status-modal-delete", "style"),
     Output("status-modal-feedback", "children"),
     Input({"type": "status-app", "index": ALL}, "n_clicks"),
+    Input({"type": "edit-status-event", "index": ALL}, "n_clicks"),
     prevent_initial_call=True,
 )
-def _open_status_modal(_clicks):
+def _open_status_modal(_new_clicks, _edit_clicks):
+    """Ouvre la modale statut : nouvelle étape, ou édition d'une étape existante."""
     if not _clicked():
         raise PreventUpdate
-    app_id = ctx.triggered_id["index"]
+    trigger = ctx.triggered_id
+    event = None
+    if trigger["type"] == "edit-status-event":
+        event = repo.get_status_event(trigger["index"])
+        if not event:
+            raise PreventUpdate
+        app_id = event["application_id"]
+    else:
+        app_id = trigger["index"]
     app = repo.get_application(app_id)
     if not app:
         raise PreventUpdate
     options = [{"label": s["label"], "value": s["label"]} for s in repo.list_status_types()]
     label = f"{app['title']} — {app['company'] or ''}"
+    if event:
+        return (
+            True,
+            "Modifier l'étape",
+            "Statut",
+            label,
+            options,
+            event["label"],
+            event["changed_at"].date().isoformat(),
+            event["note"] or "",
+            app_id,
+            event["id"],
+            _DELETE_SHOWN,
+            "",
+        )
     return (
         True,
+        "Changer le statut",
+        "Nouveau statut",
         label,
         options,
         app["current_status"],
         date.today().isoformat(),
         "",
         app_id,
+        None,
+        _DELETE_HIDDEN,
         "",
     )
 
@@ -413,20 +450,52 @@ def _cancel_status_modal(_n):
     State("status-note", "value"),
     State("status-date", "value"),
     State("status-app-id", "data"),
+    State("status-event-id", "data"),
     State("refresh-apps", "data"),
     prevent_initial_call=True,
 )
-def _save_status(_n, status_label, note, date_str, app_id, refresh):
+def _save_status(_n, status_label, note, date_str, app_id, event_id, refresh):
     if not app_id or not status_label:
         raise PreventUpdate
+    note = (note or "").strip() or None
     changed_on = _parse_date_str(date_str)
-    changed_at = (
-        datetime.combine(changed_on, datetime.now().time())
-        if changed_on
-        else datetime.now()
-    )
-    repo.add_status_event(app_id, status_label, note=note, changed_at=changed_at)
+    if event_id:
+        event = repo.get_status_event(event_id)
+        if not event:
+            raise PreventUpdate
+        # On garde l'heure d'origine : elle départage les étapes d'un même jour.
+        old = event["changed_at"]
+        changed_at = datetime.combine(changed_on, old.time()) if changed_on else old
+        repo.update_status_event(event_id, status_label, changed_at, note=note)
+    else:
+        changed_at = (
+            datetime.combine(changed_on, datetime.now().time())
+            if changed_on
+            else datetime.now()
+        )
+        repo.add_status_event(app_id, status_label, note=note, changed_at=changed_at)
     return False, (refresh or 0) + 1
+
+
+@callback(
+    Output("status-modal", "is_open", allow_duplicate=True),
+    Output("refresh-apps", "data", allow_duplicate=True),
+    Output("status-modal-feedback", "children", allow_duplicate=True),
+    Input("status-modal-delete", "n_clicks"),
+    State("status-event-id", "data"),
+    State("refresh-apps", "data"),
+    prevent_initial_call=True,
+)
+def _delete_status_event(_n, event_id, refresh):
+    if not event_id:
+        raise PreventUpdate
+    if not repo.delete_status_event(event_id):
+        return no_update, no_update, dbc.Alert(
+            "Impossible de supprimer la seule étape de la candidature : "
+            "modifiez-la plutôt.",
+            color="warning", class_name="py-2 mb-0",
+        )
+    return False, (refresh or 0) + 1, ""
 
 
 # ---------------------------------------------------------------------------
@@ -523,6 +592,9 @@ def _delete_comment(_n, comment_id, refresh):
     prevent_initial_call=True,
 )
 def _export_ods(_n):
+    # Le bouton apparaît (n_clicks=0) à chaque ouverture de la page : pas un clic.
+    if not _clicked():
+        raise PreventUpdate
     path = export_applications_ods()
     return dcc.send_file(str(path))
 
@@ -535,6 +607,8 @@ def _export_ods(_n):
     prevent_initial_call=True,
 )
 def _retry_annonces(_n, refresh):
+    if not _clicked():
+        raise PreventUpdate
     targets = repo.list_pending_annonces()
     ok = 0
     for app_id, url, title in targets:

@@ -35,6 +35,7 @@ def _stores() -> html.Div:
             dcc.Store(id="refresh-letters", data=0),
             dcc.Store(id="edit-app-id", data=None),
             dcc.Store(id="status-app-id", data=None),
+            dcc.Store(id="status-event-id", data=None),
             dcc.Store(id="comment-edit-id", data=None),
             dcc.Store(id="selected-letter-id", data=None),
         ]

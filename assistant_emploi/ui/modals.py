@@ -145,11 +145,11 @@ def status_modal() -> dbc.Modal:
         id="status-modal",
         is_open=False,
         children=[
-            dbc.ModalHeader(dbc.ModalTitle("Changer le statut")),
+            dbc.ModalHeader(dbc.ModalTitle("Changer le statut", id="status-modal-title")),
             dbc.ModalBody(
                 [
                     html.Div(id="status-modal-app-label", className="muted mb-2"),
-                    dbc.Label("Nouveau statut"),
+                    dbc.Label("Nouveau statut", id="status-select-label"),
                     dbc.Select(id="status-select", class_name="mb-3"),
                     dbc.Row(
                         [
@@ -182,6 +182,9 @@ def status_modal() -> dbc.Modal:
             ),
             dbc.ModalFooter(
                 [
+                    # Visible uniquement en édition d'une étape existante.
+                    dbc.Button("Supprimer l'étape", id="status-modal-delete",
+                               className="btn-ghost", style={"display": "none"}),
                     dbc.Button("Annuler", id="status-modal-cancel", className="btn-ghost"),
                     dbc.Button("Enregistrer le statut", id="status-modal-save",
                                className="btn-accent"),

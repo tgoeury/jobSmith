@@ -229,3 +229,38 @@ def test_manual_copy_without_url_survives_edit():
         url=None, cv_id=None, is_downloadable_url=False,
     )
     assert repo.get_application(app_id)["annonce_status"] == "ok"
+
+
+# ---------------------------------------------------------------------------
+# Édition de l'historique des statuts
+# ---------------------------------------------------------------------------
+
+def test_update_status_event_changes_label_date_and_note():
+    app_id = _make_app(applied=date(2026, 5, 1))
+    event_id = repo.get_application(app_id)["history"][0]["id"]
+    repo.update_status_event(event_id, "1er entretien", datetime(2026, 5, 3, 9, 0),
+                             note="visio")
+    event = repo.get_status_event(event_id)
+    assert event["label"] == "1er entretien"  # type créé à la volée si besoin
+    assert event["changed_at"] == datetime(2026, 5, 3, 9, 0)
+    assert event["note"] == "visio"
+    assert repo.get_application(app_id)["current_status"] == "1er entretien"
+
+
+def test_moving_an_event_date_reorders_current_status():
+    app_id = _make_app(applied=date(2026, 5, 1))
+    repo.add_status_event(app_id, "Refus", changed_at=datetime(2026, 5, 10))
+    refus_id = repo.get_application(app_id)["history"][-1]["id"]
+    # Le refus antidaté avant la candidature n'est plus le statut courant.
+    repo.update_status_event(refus_id, "Refus", datetime(2026, 4, 1))
+    assert repo.get_application(app_id)["current_status"] == "Candidature envoyée"
+
+
+def test_delete_status_event_keeps_at_least_one():
+    app_id = _make_app()
+    first_id = repo.get_application(app_id)["history"][0]["id"]
+    assert repo.delete_status_event(first_id) is False
+    repo.add_status_event(app_id, "Refus", changed_at=datetime.now())
+    assert repo.delete_status_event(first_id) is True
+    history = repo.get_application(app_id)["history"]
+    assert [e["label"] for e in history] == ["Refus"]

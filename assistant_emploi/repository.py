@@ -370,6 +370,51 @@ def add_status_event(app_id: int, status_label: str, note: str | None = None,
         session.commit()
 
 
+def get_status_event(event_id: int) -> dict | None:
+    with SessionLocal() as session:
+        event = session.get(StatusEvent, event_id)
+        if event is None:
+            return None
+        return {
+            "id": event.id,
+            "application_id": event.application_id,
+            "label": event.status.label,
+            "changed_at": event.changed_at,
+            "note": event.note,
+        }
+
+
+def update_status_event(event_id: int, status_label: str, changed_at: datetime,
+                        note: str | None = None) -> None:
+    """Modifie une étape de l'historique (statut, date, note)."""
+    with SessionLocal() as session:
+        event = session.get(StatusEvent, event_id)
+        if event is None:
+            return
+        event.status_id = get_or_create_status(session, status_label).id
+        event.changed_at = changed_at
+        event.note = note or None
+        session.commit()
+
+
+def delete_status_event(event_id: int) -> bool:
+    """Supprime une étape. Refuse (False) de supprimer la seule étape d'une candidature."""
+    with SessionLocal() as session:
+        event = session.get(StatusEvent, event_id)
+        if event is None:
+            return False
+        siblings = (
+            session.query(StatusEvent)
+            .filter(StatusEvent.application_id == event.application_id)
+            .count()
+        )
+        if siblings <= 1:
+            return False
+        session.delete(event)
+        session.commit()
+        return True
+
+
 # ---------------------------------------------------------------------------
 # Commentaires
 # ---------------------------------------------------------------------------
